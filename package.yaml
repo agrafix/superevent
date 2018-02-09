@@ -29,6 +29,14 @@ library:
     - text
     - hashable
     - unordered-containers
+    - containers
+    - mtl
+    - transformers
+    - stm
+    - lifted-base
+    - async
+    - monad-control
+    - transformers-base
   ghc-options: -Wall
 
 executables:

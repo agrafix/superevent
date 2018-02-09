@@ -14,3 +14,9 @@ data Event p
     , e_seq :: SequenceNumber
     , e_payload :: p
     } deriving (Show, Eq)
+
+data Snapshot st
+    = Snapshot
+    { s_lastSeq :: SequenceNumber
+    , s_state :: st
+    } deriving (Show, Eq)
