@@ -1,0 +1,8 @@
+.shake/
+.stack-work/
+frontend/.sass-cache/
+frontend/bower_components/
+_frontend/
+.DS_Store
+.idea/
+sync.sh
