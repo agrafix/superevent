@@ -1,4 +1,3 @@
-
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -6,7 +5,6 @@
 module SuperEvent.Store.Types where
 
 import Data.Aeson
-import Data.ByteString (ByteString)
 import Data.Conduit
 import Data.Hashable
 import Data.Int

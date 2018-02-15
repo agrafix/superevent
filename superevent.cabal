@@ -2,11 +2,13 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: baaaf61a75881d597d9fcf0b5bd6590c0cc0adaab1bf782b6cd08a1321ffefd5
+-- hash: db31704f04d9d2d9eb03ab7d352e75d445cfff7a31d3b68cbb8e90e6b5170f05
 
 name:           superevent
 version:        0.1.0.0
-description:    Please see the README on Github at <https://github.com/agrafix/superevent#readme>
+synopsis:       A simple opinionated event store implementation
+description:    A simple opinionated event store implementation
+category:       Database
 homepage:       https://github.com/agrafix/superevent#readme
 bug-reports:    https://github.com/agrafix/superevent/issues
 author:         Alexander Thiemann
@@ -57,27 +59,9 @@ library
     , uuid
     , vector
   exposed-modules:
-      Lib
-      SuperEvent.Example
-      SuperEvent.Persist.Serialise
-      SuperEvent.Persist.Types
       SuperEvent.Store.Hasql
       SuperEvent.Store.Hasql.Utils
-      SuperEvent.Store.Memory
       SuperEvent.Store.Types
-      SuperEvent.Types
-  other-modules:
-      Paths_superevent
-  default-language: Haskell2010
-
-executable superevent-exe
-  main-is: Main.hs
-  hs-source-dirs:
-      app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      base >=4.7 && <5
-    , superevent
   other-modules:
       Paths_superevent
   default-language: Haskell2010
