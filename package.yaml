@@ -4,7 +4,7 @@ github:              "agrafix/superevent"
 license:             BSD3
 author:              "Alexander Thiemann"
 maintainer:          "mail@athiemann.net"
-copyright:           "2017 Alexander Thiemann <mail@athiemann.net>"
+copyright:           "2018 Alexander Thiemann <mail@athiemann.net>"
 
 extra-source-files:
   - README.md

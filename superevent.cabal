@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d9e8efd46ea8ce2428022f8d10cdd63802381d8f93df393f5f83683c7a08dc7b
+-- hash: 1636a007f3d46981133cef8a5a092ad267cf35b4404cb0ce81c84ee90cc74890
 
 name:           superevent
 version:        0.1.0.0
@@ -13,7 +13,7 @@ homepage:       https://github.com/agrafix/superevent#readme
 bug-reports:    https://github.com/agrafix/superevent/issues
 author:         Alexander Thiemann
 maintainer:     mail@athiemann.net
-copyright:      2017 Alexander Thiemann <mail@athiemann.net>
+copyright:      2018 Alexander Thiemann <mail@athiemann.net>
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
