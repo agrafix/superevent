@@ -37,6 +37,12 @@ library:
     - async
     - monad-control
     - transformers-base
+    - vector
+    - bytestring
+    - time
+    - conduit
+    - hasql
+    - hasql-simple
   ghc-options: -Wall
 
 executables:

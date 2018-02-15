@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c7a855ae630a528f44dc23b689935cb4a2f0b684c44b3082b4534afdc42108dc
+-- hash: 4794d4e9394db2902a0c6e373b36b44ea6217e89498c564ce1d3e9518af706c8
 
 name:           superevent
 version:        0.1.0.0
@@ -32,23 +32,31 @@ library
   build-depends:
       async
     , base >=4.7 && <5
+    , bytestring
+    , conduit
     , containers
     , hashable
+    , hasql
+    , hasql-simple
     , lifted-base
     , monad-control
     , mtl
     , stm
     , text
+    , time
     , transformers
     , transformers-base
     , unordered-containers
     , uuid
+    , vector
   exposed-modules:
       Lib
       SuperEvent.Example
       SuperEvent.Persist.Serialise
       SuperEvent.Persist.Types
+      SuperEvent.Store.Hasql
       SuperEvent.Store.Memory
+      SuperEvent.Store.Types
       SuperEvent.Types
   other-modules:
       Paths_superevent
