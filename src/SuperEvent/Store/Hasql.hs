@@ -59,7 +59,8 @@ newPgSqlStore connStr =
 withTempStore :: (DbStore -> IO a) -> IO a
 withTempStore run =
     bracket allocDb removeDb $ \(_, dbname) ->
-    bracket (newPgSqlStore $ "dbname=" <> dbname) (\_ -> pure ()) run
+    do putStrLn ("TempDB is: " <> show dbname)
+       bracket (newPgSqlStore $ "dbname=" <> dbname) (\_ -> pure ()) run
     where
         assertRight y =
             case y of
@@ -164,7 +165,7 @@ qSingleEvent =
     where
       sql =
           "SELECT "
-          <> "(stream, id, version, type, data, meta_data, created) "
+          <> "stream, id, version, type, data, meta_data, created "
           <> "FROM "
           <> "events "
           <> "WHERE stream = $1 AND version = $2 LIMIT 1"
@@ -184,14 +185,15 @@ data EventStreamQuery
 sqlEventStream :: ReadDirection -> BS.ByteString
 sqlEventStream readDir =
     "SELECT "
-    <> "(stream, id, version, type, data, meta_data, created) "
+    <> "stream, id, version, type, data, meta_data, created "
     <> "FROM "
     <> "events "
     <> "WHERE stream = $1 AND version "
     <> (if readDir == RdForward then ">=" else "<=")
-    <> " $2 LIMIT $3 "
+    <> " $2 "
     <> "ORDER BY version "
     <> (if readDir == RdForward then "ASC" else "DESC")
+    <> " LIMIT $3"
 
 encEventStreamQuery :: E.Params EventStreamQuery
 encEventStreamQuery =
@@ -220,14 +222,15 @@ qGlobalEvent readDir =
     where
       sql =
           "SELECT "
-          <> "(stream, id, version, type, data, meta_data, created) "
+          <> "position, stream, id, version, type, data, meta_data, created "
           <> "FROM "
           <> "events "
           <> "WHERE position "
           <> (if readDir == RdForward then ">=" else "<=")
-          <> " $1 LIMIT $2 "
+          <> " $1 "
           <> "ORDER BY position "
           <> (if readDir == RdForward then "ASC" else "DESC")
+          <> " LIMIT $2 "
       encoder =
           contramap geq_position (E.value encGlobalPosition)
           <> contramap (fromIntegral . geq_limit) (E.value E.int8)

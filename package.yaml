@@ -16,27 +16,24 @@ description:         A simple opinionated event store implementation
 
 dependencies:
   - base >= 4.7 && < 5
+  - vector
+  - text
+  - uuid
+  - aeson
+  - mtl
+  - transformers
+  - stm
+  - async
+  - conduit
 
 library:
   source-dirs: src
   dependencies:
-    - uuid
-    - text
     - hashable
     - unordered-containers
     - containers
-    - mtl
-    - aeson
-    - transformers
-    - stm
-    - lifted-base
-    - async
-    - monad-control
-    - transformers-base
-    - vector
     - bytestring
     - time
-    - conduit
     - hasql
     - hasql-pool
     - hasql-transaction
@@ -52,8 +49,11 @@ tests:
     main:                Spec.hs
     source-dirs:         test
     ghc-options:
-    - -threaded
-    - -rtsopts
-    - -with-rtsopts=-N
+      - -threaded
+      - -rtsopts
+      - -with-rtsopts=-N
     dependencies:
-    - superevent
+      - superevent
+      - hspec
+      - temporary
+      - QuickCheck
