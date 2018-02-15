@@ -21,6 +21,7 @@ spec :: Spec
 spec =
     around withTempStore $
     do it "should work for simple reads" simpleWriteRead
+       it "should work for simple reads to two streams" simpleWriteRead2
        it "should work for simple stream reads" simpleWriteReadStream
        it "should work for simple global reads" simpleWriteReadGlobal
        it "should work for simple subscriptions" simpleWriteSubStream
@@ -37,6 +38,27 @@ simpleWriteRead store =
        guid <- UUID.nextRandom
        writeRes <- writeToStream store stream EvAny (V.singleton $ entry guid)
        writeRes `shouldBe` WrSuccess
+       evt <- readEvent store stream (nextEventNumber firstEventNumber)
+       case evt of
+         ErrFailed -> expectationFailure "Read failed"
+         ErrValue re -> re_guid re `shouldBe` guid
+
+simpleWriteRead2 ::
+    (EventStoreReader IO es, EventStoreWriter IO es)
+    => es -> IO ()
+simpleWriteRead2 store =
+    do let payload :: T.Text
+           payload = "Hello"
+           entry guid =
+               EventData guid (EventType "foo") (toJSON payload) (toJSON ())
+           stream = StreamId "text"
+       guid <- UUID.nextRandom
+       writeRes <- writeToStream store stream EvAny (V.singleton $ entry guid)
+       writeRes `shouldBe` WrSuccess
+       guid2 <- UUID.nextRandom
+       writeRes2 <-
+           writeToStream store (StreamId "bar") EvAny (V.singleton $ entry guid2)
+       writeRes2 `shouldBe` WrSuccess
        evt <- readEvent store stream (nextEventNumber firstEventNumber)
        case evt of
          ErrFailed -> expectationFailure "Read failed"

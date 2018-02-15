@@ -355,7 +355,7 @@ CREATE TABLE events (
     created timestamptz NOT NULL DEFAULT NOW(),
     CONSTRAINT "event_id" PRIMARY KEY (id, stream),
     UNIQUE (stream, version),
-    CONSTRAINT valid_version CHECK (version >= position)
+    CONSTRAINT valid_version CHECK (position >= version)
 );
 
 CREATE INDEX event_stream ON events (stream);
