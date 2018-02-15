@@ -49,9 +49,9 @@ writeToMem ms sid ev eventData =
                         writeTVar streamHolderVar (stream <> recordedEvents)
                         pure WrSuccess
              case (streamVar, ev) of
-               (Nothing, EvEmptyStream) -> pure WrStreamDoesNotExist
-               (Nothing, EvExact _) -> pure WrStreamDoesNotExist
-               (Nothing, EvStreamExists) -> pure WrStreamDoesNotExist
+               (Nothing, EvEmptyStream) -> pure WrWrongExpectedVersion
+               (Nothing, EvExact _) -> pure WrWrongExpectedVersion
+               (Nothing, EvStreamExists) -> pure WrWrongExpectedVersion
                (Nothing, EvNoStream) ->
                    do streamHolder <- newTVar V.empty
                       go streamHolder
@@ -62,16 +62,16 @@ writeToMem ms sid ev eventData =
                (Just s, EvStreamExists) -> go s
                (Just s, EvEmptyStream) ->
                    do isEmpty <- V.null <$> readTVar s
-                      if isEmpty then go s else pure WrStreamNotEmpty
+                      if isEmpty then go s else pure WrWrongExpectedVersion
                (Just s, EvExact en) ->
                    do isEmpty <- V.null <$> readTVar s
                       if isEmpty
-                          then pure WrStreamEmpty
+                          then pure WrWrongExpectedVersion
                           else do lastElem <- V.last <$> readTVar s
                                   if en == re_number lastElem
                                       then go s
                                       else pure WrWrongExpectedVersion
-               (Just _, EvNoStream) -> pure WrStreamExists
+               (Just _, EvNoStream) -> pure WrWrongExpectedVersion
 
 instance EventStoreWriter IO MemoryStore where
     writeToStream = writeToMem

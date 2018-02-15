@@ -2,7 +2,7 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4794d4e9394db2902a0c6e373b36b44ea6217e89498c564ce1d3e9518af706c8
+-- hash: baaaf61a75881d597d9fcf0b5bd6590c0cc0adaab1bf782b6cd08a1321ffefd5
 
 name:           superevent
 version:        0.1.0.0
@@ -30,20 +30,27 @@ library
       src
   ghc-options: -Wall
   build-depends:
-      async
+      aeson
+    , async
     , base >=4.7 && <5
     , bytestring
     , conduit
     , containers
+    , contravariant
     , hashable
     , hasql
-    , hasql-simple
+    , hasql-migration
+    , hasql-pool
+    , hasql-transaction
     , lifted-base
     , monad-control
     , mtl
+    , random
     , stm
+    , string-qq
     , text
     , time
+    , timespan
     , transformers
     , transformers-base
     , unordered-containers
@@ -55,6 +62,7 @@ library
       SuperEvent.Persist.Serialise
       SuperEvent.Persist.Types
       SuperEvent.Store.Hasql
+      SuperEvent.Store.Hasql.Utils
       SuperEvent.Store.Memory
       SuperEvent.Store.Types
       SuperEvent.Types

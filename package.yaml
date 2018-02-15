@@ -31,6 +31,7 @@ library:
     - unordered-containers
     - containers
     - mtl
+    - aeson
     - transformers
     - stm
     - lifted-base
@@ -42,7 +43,13 @@ library:
     - time
     - conduit
     - hasql
-    - hasql-simple
+    - hasql-pool
+    - hasql-transaction
+    - hasql-migration
+    - timespan
+    - random
+    - contravariant
+    - string-qq
   ghc-options: -Wall
 
 executables:

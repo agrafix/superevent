@@ -3,3 +3,5 @@ packages:
   - .
 extra-deps:
   - hasql-simple-0.1.0.0
+  - hasql-cursor-query-0.4.4
+  - hasql-cursor-transaction-0.6.3
