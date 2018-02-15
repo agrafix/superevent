@@ -2,10 +2,10 @@
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 1636a007f3d46981133cef8a5a092ad267cf35b4404cb0ce81c84ee90cc74890
+-- hash: 0f38d794a84bc7b11884102cf51fa7ea920ae5a670f168193f5c4a039caf5d27
 
 name:           superevent
-version:        0.1.0.0
+version:        0.1.0.1
 synopsis:       A simple opinionated event store implementation
 description:    A simple opinionated event store implementation
 category:       Database
