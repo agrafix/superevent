@@ -71,6 +71,7 @@ subscribeToImpl rs cfg =
       do evt <- await
          case evt of
            Just x ->
-             do when (re_number x > startAt) $ yield x
+             do when (re_number x > startAt && re_stream x == sc_stream cfg) $
+                  yield x
                 sendLoop startAt
            Nothing -> pure ()

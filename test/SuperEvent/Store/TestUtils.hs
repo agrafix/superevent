@@ -71,6 +71,7 @@ streamingSpecHelper =
   do it "simple case works" simpleWriteSubStream
      it "with existing events works" interleavedStream
      it "with concurrent event writing works" concurrentStream
+     it "multiple streams" multiStream
 
 
 simpleWriteSubStream ::
@@ -116,6 +117,33 @@ concurrentStream store =
          do writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
             shouldBeSuccess writeRes2
        (outVar, poller) <- makeEventSubscriber store stream
+
+       let writtenGuids = V.map ed_guid events
+       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult `shouldBe` writtenGuids
+
+multiStream ::
+    (EventStoreSubscriber IO es, EventStoreWriter IO es)
+    => es -> IO ()
+multiStream store =
+    do let stream = StreamId "text"
+           stream2 = StreamId "text2"
+       events <- generateEvents
+       events2 <- generateEvents
+
+       writeRes <- writeToStream store stream EvAny (V.take 50 events)
+       shouldBeSuccess writeRes
+
+       writeRes1 <- writeToStream store stream2 EvAny (V.take 50 events2)
+       shouldBeSuccess writeRes1
+
+       (outVar, poller) <- makeEventSubscriber store stream
+
+       writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
+       shouldBeSuccess writeRes2
+
+       writeRes3 <- writeToStream store stream2 EvAny (V.drop 50 events2)
+       shouldBeSuccess writeRes3
 
        let writtenGuids = V.map ed_guid events
        finalResult <- checkAllEventsArrived (outVar, poller)
