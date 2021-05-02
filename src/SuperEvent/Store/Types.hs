@@ -54,7 +54,7 @@ newtype StreamId
     deriving (Show, Eq, Ord, Hashable)
 
 data WriteResult
-    = WrSuccess
+    = WrSuccess (Vector RecordedEvent)
     | WrWrongExpectedVersion
     deriving (Show, Eq)
 
@@ -85,6 +85,7 @@ data EventReadResult
 
 class EventStoreReader m es | es -> m where
     readEvent :: es -> StreamId -> EventNumber -> m EventReadResult
+    readStreamVersion :: es -> StreamId -> m EventNumber
     readStreamEvents ::
         es -> StreamId -> EventNumber -> Int -> ReadDirection
         -> m (Vector RecordedEvent)

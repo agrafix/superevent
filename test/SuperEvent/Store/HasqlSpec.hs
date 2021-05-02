@@ -4,14 +4,10 @@
 module SuperEvent.Store.HasqlSpec (spec) where
 
 import SuperEvent.Store.Hasql
+import SuperEvent.Store.TestUtils
 import SuperEvent.Store.Types
 
-import Control.Concurrent.Async
-import Control.Concurrent.STM
-import Control.Monad
-import Control.Monad.Trans
 import Data.Aeson
-import Data.Conduit
 import Test.Hspec
 import qualified Data.Text as T
 import qualified Data.UUID.V4 as UUID
@@ -24,7 +20,7 @@ spec =
        it "should work for simple reads to two streams" simpleWriteRead2
        it "should work for simple stream reads" simpleWriteReadStream
        it "should work for simple global reads" simpleWriteReadGlobal
-       it "should work for simple subscriptions" simpleWriteSubStream
+       streamingSpecHelper
 
 simpleWriteRead ::
     (EventStoreReader IO es, EventStoreWriter IO es)
@@ -37,7 +33,7 @@ simpleWriteRead store =
            stream = StreamId "text"
        guid <- UUID.nextRandom
        writeRes <- writeToStream store stream EvAny (V.singleton $ entry guid)
-       writeRes `shouldBe` WrSuccess
+       shouldBeSuccess writeRes
        evt <- readEvent store stream (nextEventNumber firstEventNumber)
        case evt of
          ErrFailed -> expectationFailure "Read failed"
@@ -54,11 +50,11 @@ simpleWriteRead2 store =
            stream = StreamId "text"
        guid <- UUID.nextRandom
        writeRes <- writeToStream store stream EvAny (V.singleton $ entry guid)
-       writeRes `shouldBe` WrSuccess
+       shouldBeSuccess writeRes
        guid2 <- UUID.nextRandom
        writeRes2 <-
            writeToStream store (StreamId "bar") EvAny (V.singleton $ entry guid2)
-       writeRes2 `shouldBe` WrSuccess
+       shouldBeSuccess writeRes2
        evt <- readEvent store stream (nextEventNumber firstEventNumber)
        case evt of
          ErrFailed -> expectationFailure "Read failed"
@@ -77,7 +73,7 @@ simpleWriteReadStream store =
            V.forM (V.fromList [0..99]) $ \(_ :: Int) ->
            entry <$> UUID.nextRandom
        writeRes <- writeToStream store stream EvAny events
-       writeRes `shouldBe` WrSuccess
+       shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
            readHelper evtNum lim =
                V.map re_guid <$> readStreamEvents store stream evtNum lim RdForward
@@ -100,7 +96,7 @@ simpleWriteReadGlobal store =
            V.forM (V.fromList [0..99]) $ \(_ :: Int) ->
            entry <$> UUID.nextRandom
        writeRes <- writeToStream store stream EvAny events
-       writeRes `shouldBe` WrSuccess
+       shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
            readHelper pos lim =
                V.map (re_guid . snd) <$> readAllEvents store pos lim RdForward
@@ -109,39 +105,3 @@ simpleWriteReadGlobal store =
 
        evts2 <- readHelper (GlobalPosition 11) 100
        evts2 `shouldBe` V.take 90 (V.drop 10 writtenGuids)
-
-simpleWriteSubStream ::
-    (EventStoreSubscriber IO es, EventStoreReader IO es, EventStoreWriter IO es)
-    => es -> IO ()
-simpleWriteSubStream store =
-    do let payload :: T.Text
-           payload = "Hello"
-           entry guid =
-               EventData guid (EventType "foo") (toJSON payload) (toJSON ())
-           stream = StreamId "text"
-       outVar <- newTVarIO []
-       poller <-
-           async $
-           do let consumer =
-                      do val <- await
-                         case val of
-                           Nothing ->
-                               do liftIO $ putStrLn "Consumer was terminated"
-                                  pure ()
-                           Just v ->
-                               do liftIO $ atomically $ modifyTVar' outVar (v :)
-                                  consumer
-              runConduit $ subscribeTo store (SubscriptionConfig SspBeginning stream) .| consumer
-       events <-
-           V.forM (V.fromList [0..9999]) $ \(_ :: Int) ->
-           entry <$> UUID.nextRandom
-       writeRes <- writeToStream store stream EvAny events
-       writeRes `shouldBe` WrSuccess
-       let writtenGuids = V.map ed_guid events
-       finalResult <-
-           atomically $
-           do vals <- readTVar outVar
-              when (length vals < 9999) retry
-              pure (V.map re_guid $ V.reverse $ V.fromList vals)
-       uninterruptibleCancel poller
-       finalResult `shouldBe` writtenGuids

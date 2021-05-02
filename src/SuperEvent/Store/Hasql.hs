@@ -151,15 +151,16 @@ data WriteEvent
     , we_data :: EventData
     }
 
-qWriteEvent :: Statement WriteEvent ()
+qWriteEvent :: Statement WriteEvent RecordedEvent
 qWriteEvent =
-    Statement sql encoder D.noResult True
+    Statement sql encoder decoder True
     where
       sql =
           "INSERT INTO events "
           <> "(id, stream, version, type, data, meta_data)"
           <> " VALUES "
           <> "($1, $2, $3, $4, $5, $6)"
+          <> " RETURNING stream, id, version, type, data, meta_data, created"
       encoder =
           contramap (ed_guid . we_data) (E.param (E.nonNullable E.uuid))
           <> contramap we_stream encStreamId
@@ -167,6 +168,8 @@ qWriteEvent =
           <> contramap (ed_type . we_data) encEventType
           <> contramap (ed_data . we_data) (E.param (E.nonNullable E.jsonb))
           <> contramap (ed_metadata . we_data) (E.param (E.nonNullable E.jsonb))
+      decoder =
+          D.singleRow decRecordedEvent
 
 data SingleEventQuery
     = SingleEventQuery
@@ -272,20 +275,19 @@ dbWriteToStream db streamId ev events =
          EvExact expected -> continueIf (myVersion == Just expected) myVersion
     where
         continue vers =
-            flip V.imapM_ events $ \idx event ->
-            do let we =
+            flip V.imapM events $ \idx event ->
+            do let number = incrementTimes idx $ nextEventNumber $ fromMaybe firstEventNumber vers
+                   we =
                        WriteEvent
                        { we_stream = streamId
-                       , we_number =
-                               incrementTimes idx $
-                               nextEventNumber $ fromMaybe firstEventNumber vers
+                       , we_number = number
                        , we_data = event
                        }
                Tx.statement we qWriteEvent
         continueIf cond vers =
             if cond
-            then do continue vers
-                    pure WrSuccess
+            then do written <- continue vers
+                    pure $ WrSuccess written
             else pure WrWrongExpectedVersion
 
 instance EventStoreWriter IO DbStore where
@@ -323,6 +325,12 @@ instance EventStoreReader IO DbStore where
     readEvent = dbReadEvent
     readStreamEvents = dbReadStreamEvents
     readAllEvents = dbReadAllEvents
+    readStreamVersion = dbReadStreamVersion
+
+dbReadStreamVersion :: DbStore -> StreamId -> IO EventNumber
+dbReadStreamVersion store streamId =
+  withPool (db_store store) $
+  fromMaybe firstEventNumber <$> S.statement streamId qStreamVersion
 
 -- | Poor mans subscriber implementation as 'hasql' does not support
 -- LISTEN/NOTIFY. Could replace with REDIS?
@@ -335,9 +343,7 @@ dbSubscribeTo store config =
            case startPosition of
              SspBeginning -> pure firstEventNumber
              SspFrom x -> pure x
-             SspCurrent ->
-                 liftIO $ withPool (db_store store) $
-                 fromMaybe firstEventNumber <$> S.statement streamId qStreamVersion
+             SspCurrent -> liftIO (readStreamVersion store $ sc_stream config)
        innerLoop startNumber
     where
       innerLoop !pos =

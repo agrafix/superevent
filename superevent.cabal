@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: c8e33de5044be5843978dc719eb2c6a7729a804de4c4276a8a7340ef79d68f89
+-- hash: 403e3b42b5300c5b69662f731e27629f90e8f49263d1304bfa81a4734c4210ac
 
 name:           superevent
 version:        0.2.0.0
@@ -56,8 +56,11 @@ library
     , uuid
     , vector
   exposed-modules:
+      SuperEvent.PubSub.InProcess
+      SuperEvent.PubSub.Types
       SuperEvent.Store.Hasql
       SuperEvent.Store.Hasql.Utils
+      SuperEvent.Store.RealtimeStore
       SuperEvent.Store.Types
   other-modules:
       Paths_superevent
@@ -86,5 +89,7 @@ test-suite superevent-test
     , vector
   other-modules:
       SuperEvent.Store.HasqlSpec
+      SuperEvent.Store.RealtimeStoreSpec
+      SuperEvent.Store.TestUtils
       Paths_superevent
   default-language: Haskell2010
