@@ -1,10 +1,10 @@
 name:                superevent
-version:             0.1.0.1
+version:             0.2.0.0
 github:              "agrafix/superevent"
 license:             BSD3
 author:              "Alexander Thiemann"
 maintainer:          "mail@athiemann.net"
-copyright:           "2018 Alexander Thiemann <mail@athiemann.net>"
+copyright:           "2021 Alexander Thiemann <mail@athiemann.net>"
 
 extra-source-files:
   - README.md

@@ -75,8 +75,7 @@ simpleWriteReadStream store =
            stream = StreamId "text"
        events <-
            V.forM (V.fromList [0..99]) $ \(_ :: Int) ->
-           do guid <- UUID.nextRandom
-              pure (entry guid)
+           entry <$> UUID.nextRandom
        writeRes <- writeToStream store stream EvAny events
        writeRes `shouldBe` WrSuccess
        let writtenGuids = V.map ed_guid events
@@ -99,8 +98,7 @@ simpleWriteReadGlobal store =
            stream = StreamId "text"
        events <-
            V.forM (V.fromList [0..99]) $ \(_ :: Int) ->
-           do guid <- UUID.nextRandom
-              pure (entry guid)
+           entry <$> UUID.nextRandom
        writeRes <- writeToStream store stream EvAny events
        writeRes `shouldBe` WrSuccess
        let writtenGuids = V.map ed_guid events
@@ -131,13 +129,12 @@ simpleWriteSubStream store =
                                do liftIO $ putStrLn "Consumer was terminated"
                                   pure ()
                            Just v ->
-                               do liftIO $ atomically $ modifyTVar' outVar ((:) v)
+                               do liftIO $ atomically $ modifyTVar' outVar (v :)
                                   consumer
-              subscribeTo store (SubscriptionConfig SspBeginning stream) $$ consumer
+              runConduit $ subscribeTo store (SubscriptionConfig SspBeginning stream) .| consumer
        events <-
            V.forM (V.fromList [0..9999]) $ \(_ :: Int) ->
-           do guid <- UUID.nextRandom
-              pure (entry guid)
+           entry <$> UUID.nextRandom
        writeRes <- writeToStream store stream EvAny events
        writeRes `shouldBe` WrSuccess
        let writtenGuids = V.map ed_guid events

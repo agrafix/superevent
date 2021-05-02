@@ -1,7 +1,7 @@
-resolver: lts-10.4
+resolver:
+  url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/17/10.yaml
 packages:
   - .
 extra-deps:
-  - hasql-simple-0.1.0.0
-  - hasql-cursor-query-0.4.4
-  - hasql-cursor-transaction-0.6.3
+  - hasql-migration-0.3.0@sha256:6ca4cc6c89834bb79eb9f15b504774043b5b3994336bd86a9d79e59da6d54963,2799
+  - timespan-0.4.0.0@sha256:0652f1328e43a9b62345fce29370d8a263f1fdfa71a52e3771743325beaa562d,884

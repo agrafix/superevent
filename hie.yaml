@@ -1,0 +1,8 @@
+cradle:
+  stack:
+    stackYaml: "stack.yaml"
+    components:
+      - path: "./src"
+        component: "superevent:lib"
+      - path: "./test"
+        component: "superevent:test:superevent-test"

@@ -4,7 +4,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 module SuperEvent.Store.Hasql
-    ( newPgSqlStore
+    ( newPgSqlStore, destroyPgSqlStore
     , withTempStore
     , DbStore
     )
@@ -18,10 +18,9 @@ import Control.Monad.Trans
 import Data.Conduit
 import Data.Functor.Contravariant
 import Data.Maybe
-import Data.Monoid
 import Data.String.QQ
 import Data.Time.TimeSpan
-import Hasql.Query
+import Hasql.Statement
 import System.Random
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -33,6 +32,7 @@ import qualified Hasql.Migration as M
 import qualified Hasql.Pool as P
 import qualified Hasql.Session as S
 import qualified Hasql.Transaction as Tx
+import qualified Hasql.Transaction.Sessions as Tx
 
 data DbStore
     = DbStore
@@ -50,84 +50,97 @@ newPgSqlStore connStr =
                   do res <-
                          dbTx Tx.ReadCommitted Tx.Write $ M.runMigration mig
                      case res of
-                       M.MigrationError err -> fail err
-                       M.MigrationSuccess -> loop more
+                       Just err -> liftIO $ fail (show err)
+                       Nothing -> loop more
            in loop (M.MigrationInitialization : migs)
        pure $ DbStore store
 
+destroyPgSqlStore :: DbStore -> IO ()
+destroyPgSqlStore (DbStore (Store pool)) =
+  P.release pool
+
+withC :: BSC.ByteString -> (C.Connection -> IO c) -> IO c
+withC str =
+  let getConn =
+        do c <- C.acquire str
+           assertRight c
+      removeConn = C.release
+  in bracket getConn removeConn
+
+
+assertRight :: (MonadFail f, Show a1) => Either a1 a2 -> f a2
+assertRight y =
+  case y of
+    Right x -> pure x
+    Left errMsg -> fail (show errMsg)
+
 -- | Temporary postgres store for tests
 withTempStore :: (DbStore -> IO a) -> IO a
-withTempStore run =
-    bracket allocDb removeDb $ \(_, dbname) ->
-    do putStrLn ("TempDB is: " <> show dbname)
-       bracket (newPgSqlStore $ "dbname=" <> dbname) (\_ -> pure ()) run
+withTempStore go =
+    bracket allocDb removeDb $ \dbname ->
+    bracket (newPgSqlStore $ "host=localhost dbname=" <> dbname) destroyPgSqlStore go
     where
-        assertRight y =
-            case y of
-              Right x -> pure x
-              Left errMsg -> fail (show errMsg)
-        removeDb (globalConn, dbname) =
-            do runRes2 <-
-                   flip S.run globalConn $ S.sql $ "DROP DATABASE IF EXISTS " <> dbname
-               assertRight runRes2
-               C.release globalConn
+        removeDb dbname =
+            do putStrLn ("TempDB " <> show dbname <> " is pruned")
+               withC "host=localhost" $ \globalConn ->
+                 do runRes2 <-
+                      flip S.run globalConn $ S.sql $ "DROP DATABASE IF EXISTS " <> dbname
+                    assertRight runRes2
         allocDb =
-            do globalConnE <- C.acquire ""
-               globalConn <- assertRight globalConnE
-               dbnameSuffix <-
+            do dbnameSuffix <-
                    BSC.pack . take 10 . randomRs ('a', 'z') <$>
                    newStdGen
                let dbname = "eventstore_temp_" <> dbnameSuffix
-               runRes <-
-                   flip S.run globalConn $
-                   do S.sql $ "DROP DATABASE IF EXISTS " <> dbname
-                      S.sql $ "CREATE DATABASE " <> dbname
-               assertRight runRes
-               localConnE <- C.acquire $ "dbname=" <> dbname
-               localConn <- assertRight localConnE
-               runRes' <-
-                   flip S.run localConn $
-                   S.sql $ "CREATE EXTENSION hstore"
-               assertRight runRes'
-               C.release localConn
-               pure (globalConn, dbname)
+               withC "host=localhost" $ \globalConn ->
+                 do runRes <-
+                      flip S.run globalConn $
+                      do S.sql $ "DROP DATABASE IF EXISTS " <> dbname
+                         S.sql $ "CREATE DATABASE " <> dbname
+                    assertRight runRes
+               withC ("host=localhost dbname=" <> dbname) $ \localConn ->
+                 do runRes' <-
+                      flip S.run localConn $
+                      S.sql "CREATE EXTENSION hstore"
+                    assertRight runRes'
+               putStrLn ("TempDB " <> show dbname <> " is setup")
+               pure dbname
 
-encStreamId :: E.Value StreamId
-encStreamId = contramap unStreamId E.text
+encStreamId :: E.Params StreamId
+encStreamId = contramap unStreamId (E.param (E.nonNullable E.text))
 
-encEventType :: E.Value EventType
-encEventType = contramap unEventType E.text
+encEventType :: E.Params EventType
+encEventType = contramap unEventType (E.param (E.nonNullable E.text))
 
-encEventNumber :: E.Value EventNumber
-encEventNumber = contramap unEventNumber E.int8
+encEventNumber :: E.Params EventNumber
+encEventNumber = contramap unEventNumber (E.param (E.nonNullable E.int8))
 
-encGlobalPosition :: E.Value GlobalPosition
-encGlobalPosition = contramap unGlobalPosition E.int8
+encGlobalPosition :: E.Params GlobalPosition
+encGlobalPosition = contramap unGlobalPosition (E.param (E.nonNullable E.int8))
 
 decEventNumber :: D.Row EventNumber
-decEventNumber = EventNumber <$> D.value D.int8
+decEventNumber = EventNumber <$> D.column (D.nonNullable D.int8)
 
 decRecordedEvent :: D.Row RecordedEvent
 decRecordedEvent =
     RecordedEvent
-    <$> (StreamId <$> D.value D.text)
-    <*> D.value D.uuid
+    <$> (StreamId <$> D.column (D.nonNullable D.text))
+    <*> D.column (D.nonNullable D.uuid)
     <*> decEventNumber
-    <*> (EventType <$> D.value D.text)
-    <*> D.value D.jsonb
-    <*> D.value D.jsonb
-    <*> D.value D.timestamptz
+    <*> (EventType <$> D.column (D.nonNullable D.text))
+    <*> D.column (D.nonNullable D.jsonb)
+    <*> D.column (D.nonNullable D.jsonb)
+    <*> D.column (D.nonNullable D.timestamptz)
 
-qStreamVersion :: Query StreamId (Maybe EventNumber)
+qStreamVersion :: Statement StreamId (Maybe EventNumber)
 qStreamVersion =
-    statement sql encoder decoder True
+    Statement sql encoder decoder True
     where
       sql =
           "SELECT MAX(version) FROM events WHERE stream = $1"
       encoder =
-          E.value encStreamId
+          encStreamId
       decoder =
-          fmap EventNumber <$> D.singleRow (D.nullableValue D.int8)
+          fmap EventNumber <$> D.singleRow (D.column (D.nullable D.int8))
 
 data WriteEvent
     = WriteEvent
@@ -136,9 +149,9 @@ data WriteEvent
     , we_data :: EventData
     }
 
-qWriteEvent :: Query WriteEvent ()
+qWriteEvent :: Statement WriteEvent ()
 qWriteEvent =
-    statement sql encoder D.unit True
+    Statement sql encoder D.noResult True
     where
       sql =
           "INSERT INTO events "
@@ -146,12 +159,12 @@ qWriteEvent =
           <> " VALUES "
           <> "($1, $2, $3, $4, $5, $6)"
       encoder =
-          contramap (ed_guid . we_data) (E.value E.uuid)
-          <> contramap we_stream (E.value encStreamId)
-          <> contramap we_number (E.value encEventNumber)
-          <> contramap (ed_type . we_data) (E.value encEventType)
-          <> contramap (ed_data . we_data) (E.value E.jsonb)
-          <> contramap (ed_metadata . we_data) (E.value E.jsonb)
+          contramap (ed_guid . we_data) (E.param (E.nonNullable E.uuid))
+          <> contramap we_stream encStreamId
+          <> contramap we_number encEventNumber
+          <> contramap (ed_type . we_data) encEventType
+          <> contramap (ed_data . we_data) (E.param (E.nonNullable E.jsonb))
+          <> contramap (ed_metadata . we_data) (E.param (E.nonNullable E.jsonb))
 
 data SingleEventQuery
     = SingleEventQuery
@@ -159,9 +172,9 @@ data SingleEventQuery
     , seq_number :: EventNumber
     }
 
-qSingleEvent :: Query SingleEventQuery (Maybe RecordedEvent)
+qSingleEvent :: Statement SingleEventQuery (Maybe RecordedEvent)
 qSingleEvent =
-    statement sql encoder decoder True
+    Statement sql encoder decoder True
     where
       sql =
           "SELECT "
@@ -170,10 +183,10 @@ qSingleEvent =
           <> "events "
           <> "WHERE stream = $1 AND version = $2 LIMIT 1"
       encoder =
-          contramap seq_stream (E.value encStreamId)
-          <> contramap seq_number (E.value encEventNumber)
+          contramap seq_stream encStreamId
+          <> contramap seq_number encEventNumber
       decoder =
-          D.maybeRow decRecordedEvent
+          D.rowMaybe decRecordedEvent
 
 data EventStreamQuery
     = EventStreamQuery
@@ -197,16 +210,16 @@ sqlEventStream readDir =
 
 encEventStreamQuery :: E.Params EventStreamQuery
 encEventStreamQuery =
-    contramap esq_stream (E.value encStreamId)
-    <> contramap esq_number (E.value encEventNumber)
-    <> contramap (fromIntegral . esq_limit) (E.value E.int8)
+    contramap esq_stream encStreamId
+    <> contramap esq_number encEventNumber
+    <> contramap (fromIntegral . esq_limit) (E.param (E.nonNullable E.int8))
 
-qEventStream :: ReadDirection -> Query EventStreamQuery (V.Vector RecordedEvent)
+qEventStream :: ReadDirection -> Statement EventStreamQuery (V.Vector RecordedEvent)
 qEventStream readDir =
-    statement (sqlEventStream readDir) encEventStreamQuery decoder True
+    Statement (sqlEventStream readDir) encEventStreamQuery decoder True
     where
       decoder =
-          D.rowsVector decRecordedEvent
+          D.rowVector decRecordedEvent
 
 data GlobalEventQuery
     = GlobalEventQuery
@@ -216,9 +229,9 @@ data GlobalEventQuery
 
 qGlobalEvent ::
     ReadDirection
-    -> Query GlobalEventQuery (V.Vector (GlobalPosition, RecordedEvent))
+    -> Statement GlobalEventQuery (V.Vector (GlobalPosition, RecordedEvent))
 qGlobalEvent readDir =
-    statement sql encoder decoder True
+    Statement sql encoder decoder True
     where
       sql =
           "SELECT "
@@ -232,12 +245,12 @@ qGlobalEvent readDir =
           <> (if readDir == RdForward then "ASC" else "DESC")
           <> " LIMIT $2 "
       encoder =
-          contramap geq_position (E.value encGlobalPosition)
-          <> contramap (fromIntegral . geq_limit) (E.value E.int8)
+          contramap geq_position encGlobalPosition
+          <> contramap (fromIntegral . geq_limit) (E.param (E.nonNullable E.int8))
       decoder =
-          D.rowsVector $
+          D.rowVector $
           (,)
-          <$> (GlobalPosition <$> D.value D.int8)
+          <$> (GlobalPosition <$> D.column (D.nonNullable D.int8))
           <*> decRecordedEvent
 
 dbWriteToStream ::
@@ -249,7 +262,7 @@ dbWriteToStream ::
 dbWriteToStream db streamId ev events =
     withPool (db_store db) $
     dbTx Tx.Serializable Tx.Write $
-    do myVersion <- Tx.query streamId qStreamVersion
+    do myVersion <- Tx.statement streamId qStreamVersion
        case ev of
          EvAny -> continueIf True myVersion
          EvNoStream -> continueIf (isNothing myVersion) myVersion
@@ -266,7 +279,7 @@ dbWriteToStream db streamId ev events =
                                nextEventNumber $ fromMaybe firstEventNumber vers
                        , we_data = event
                        }
-               Tx.query we qWriteEvent
+               Tx.statement we qWriteEvent
         continueIf cond vers =
             if cond
             then do continue vers
@@ -283,7 +296,7 @@ dbReadEvent ::
     -> IO EventReadResult
 dbReadEvent store streamId eventNumber =
     withPool (db_store store) $
-    do res <- S.query (SingleEventQuery streamId eventNumber) qSingleEvent
+    do res <- S.statement (SingleEventQuery streamId eventNumber) qSingleEvent
        case res of
          Nothing -> pure ErrFailed
          Just v -> pure (ErrValue v)
@@ -294,7 +307,7 @@ dbReadStreamEvents ::
     -> IO (V.Vector RecordedEvent)
 dbReadStreamEvents store streamId eventNumber size readDir =
     withPool (db_store store) $
-    S.query (EventStreamQuery streamId eventNumber size) (qEventStream readDir)
+    S.statement (EventStreamQuery streamId eventNumber size) (qEventStream readDir)
 
 dbReadAllEvents ::
     DbStore
@@ -302,7 +315,7 @@ dbReadAllEvents ::
     -> IO (V.Vector (GlobalPosition, RecordedEvent))
 dbReadAllEvents store eventNumber size readDir =
     withPool (db_store store) $
-    S.query (GlobalEventQuery eventNumber size) (qGlobalEvent readDir)
+    S.statement (GlobalEventQuery eventNumber size) (qGlobalEvent readDir)
 
 instance EventStoreReader IO DbStore where
     readEvent = dbReadEvent
@@ -322,7 +335,7 @@ dbSubscribeTo store config =
              SspFrom x -> pure x
              SspCurrent ->
                  liftIO $ withPool (db_store store) $
-                 fromMaybe firstEventNumber <$> S.query streamId qStreamVersion
+                 fromMaybe firstEventNumber <$> S.statement streamId qStreamVersion
        innerLoop startNumber
     where
       innerLoop !pos =
