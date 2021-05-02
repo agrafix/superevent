@@ -83,8 +83,7 @@ withTempStore go =
          bracket (newPgSqlStore $ baseConnStr <> " dbname=" <> dbname) destroyPgSqlStore go
     where
         removeDb baseConnStr dbname =
-            do putStrLn ("TempDB " <> show dbname <> " is pruned")
-               withC baseConnStr $ \globalConn ->
+            do withC baseConnStr $ \globalConn ->
                  do runRes2 <-
                       flip S.run globalConn $ S.sql $ "DROP DATABASE IF EXISTS " <> dbname
                     assertRight runRes2
@@ -104,7 +103,6 @@ withTempStore go =
                       flip S.run localConn $
                       S.sql "CREATE EXTENSION hstore"
                     assertRight runRes'
-               putStrLn ("TempDB " <> show dbname <> " is setup")
                pure dbname
 
 encStreamId :: E.Params StreamId
