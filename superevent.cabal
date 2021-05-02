@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 2c5a59a10efc51d77d1efd31d4e270b199dfd118977443817007d32fb0fd01d4
+-- hash: c8e33de5044be5843978dc719eb2c6a7729a804de4c4276a8a7340ef79d68f89
 
 name:           superevent
-version:        0.1.0.1
+version:        0.2.0.0
 synopsis:       A simple opinionated event store implementation
 description:    A simple opinionated event store implementation
 category:       Database
@@ -15,7 +15,7 @@ homepage:       https://github.com/agrafix/superevent#readme
 bug-reports:    https://github.com/agrafix/superevent/issues
 author:         Alexander Thiemann
 maintainer:     mail@athiemann.net
-copyright:      2018 Alexander Thiemann <mail@athiemann.net>
+copyright:      2021 Alexander Thiemann <mail@athiemann.net>
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple

@@ -21,6 +21,7 @@ import Data.Maybe
 import Data.String.QQ
 import Data.Time.TimeSpan
 import Hasql.Statement
+import System.Environment
 import System.Random
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -77,27 +78,28 @@ assertRight y =
 -- | Temporary postgres store for tests
 withTempStore :: (DbStore -> IO a) -> IO a
 withTempStore go =
-    bracket allocDb removeDb $ \dbname ->
-    bracket (newPgSqlStore $ "host=localhost dbname=" <> dbname) destroyPgSqlStore go
+    do baseConnStr <- BSC.pack . fromMaybe "host=localhost" <$> lookupEnv "PG_STRING"
+       bracket (allocDb baseConnStr) (removeDb baseConnStr) $ \dbname ->
+         bracket (newPgSqlStore $ baseConnStr <> " dbname=" <> dbname) destroyPgSqlStore go
     where
-        removeDb dbname =
+        removeDb baseConnStr dbname =
             do putStrLn ("TempDB " <> show dbname <> " is pruned")
-               withC "host=localhost" $ \globalConn ->
+               withC baseConnStr $ \globalConn ->
                  do runRes2 <-
                       flip S.run globalConn $ S.sql $ "DROP DATABASE IF EXISTS " <> dbname
                     assertRight runRes2
-        allocDb =
+        allocDb baseConnStr =
             do dbnameSuffix <-
                    BSC.pack . take 10 . randomRs ('a', 'z') <$>
                    newStdGen
                let dbname = "eventstore_temp_" <> dbnameSuffix
-               withC "host=localhost" $ \globalConn ->
+               withC baseConnStr $ \globalConn ->
                  do runRes <-
                       flip S.run globalConn $
                       do S.sql $ "DROP DATABASE IF EXISTS " <> dbname
                          S.sql $ "CREATE DATABASE " <> dbname
                     assertRight runRes
-               withC ("host=localhost dbname=" <> dbname) $ \localConn ->
+               withC (baseConnStr <> " dbname=" <> dbname) $ \localConn ->
                  do runRes' <-
                       flip S.run localConn $
                       S.sql "CREATE EXTENSION hstore"

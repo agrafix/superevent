@@ -26,3 +26,5 @@ jobs:
           enable-stack: true
           stack-version: 'latest'
       - run: stack test --fast
+        env:
+          PG_STRING: "host=localhost password=postgres"
