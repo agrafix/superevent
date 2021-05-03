@@ -86,6 +86,7 @@ data EventReadResult
 
 class EventStoreReader m es | es -> m where
     readEvent :: es -> StreamId -> EventNumber -> m EventReadResult
+    readLastEvent :: es -> StreamId -> m EventReadResult
     readStreamVersion :: es -> StreamId -> m EventNumber
     readStreamEvents ::
         es -> StreamId -> EventNumber -> Int -> ReadDirection

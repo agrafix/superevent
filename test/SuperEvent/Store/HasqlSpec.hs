@@ -20,6 +20,7 @@ spec =
        it "should work for simple reads to two streams" simpleWriteRead2
        it "should work for simple stream reads" simpleWriteReadStream
        it "should work for simple global reads" simpleWriteReadGlobal
+       it "should work for simple last reads" simpleWriteLastRead
 
 simpleWriteRead ::
     (EventStoreReader IO es, EventStoreWriter IO es)
@@ -58,6 +59,24 @@ simpleWriteRead2 store =
        case evt of
          ErrFailed -> expectationFailure "Read failed"
          ErrValue re -> re_guid re `shouldBe` guid
+
+simpleWriteLastRead ::
+    (EventStoreReader IO es, EventStoreWriter IO es)
+    => es -> IO ()
+simpleWriteLastRead store =
+    do let payload :: T.Text
+           payload = "Hello"
+           entry guid =
+               EventData guid (EventType "foo") (toJSON payload) (toJSON ())
+           stream = StreamId "text"
+       e1 <- entry <$> UUID.nextRandom
+       e2 <- entry <$> UUID.nextRandom
+       writeRes <- writeToStream store stream EvAny (V.fromList [e1, e2])
+       shouldBeSuccess writeRes
+       evt <- readLastEvent store stream
+       case evt of
+         ErrFailed -> expectationFailure "Read failed"
+         ErrValue re -> re_guid re `shouldBe` ed_guid e2
 
 simpleWriteReadStream ::
     (EventStoreReader IO es, EventStoreWriter IO es)

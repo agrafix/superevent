@@ -204,6 +204,20 @@ qSingleEvent =
       decoder =
           D.rowMaybe decRecordedEvent
 
+qLastSingleEvent :: Statement StreamId (Maybe RecordedEvent)
+qLastSingleEvent =
+    Statement sql encoder decoder True
+    where
+      sql =
+          "SELECT "
+          <> "stream, id, position, version, type, data, meta_data, created "
+          <> "FROM "
+          <> "events "
+          <> "WHERE stream = $1 ORDER BY version DESC LIMIT 1"
+      encoder = encStreamId
+      decoder =
+          D.rowMaybe decRecordedEvent
+
 data EventStreamQuery
     = EventStreamQuery
     { esq_stream :: StreamId
@@ -313,6 +327,17 @@ dbReadEvent store streamId eventNumber =
          Nothing -> pure ErrFailed
          Just v -> pure (ErrValue v)
 
+dbReadLastEvent ::
+    DbStore
+    -> StreamId
+    -> IO EventReadResult
+dbReadLastEvent store streamId =
+    withPool (db_store store) $
+    do res <- S.statement streamId qLastSingleEvent
+       case res of
+         Nothing -> pure ErrFailed
+         Just v -> pure (ErrValue v)
+
 dbReadStreamEvents ::
     DbStore
     -> StreamId -> EventNumber -> Int -> ReadDirection
@@ -331,6 +356,7 @@ dbReadAllEvents store eventNumber size readDir =
 
 instance EventStoreReader IO DbStore where
     readEvent = dbReadEvent
+    readLastEvent = dbReadLastEvent
 
     readStreamEvents = dbReadStreamEvents
     readStreamVersion = dbReadStreamVersion
