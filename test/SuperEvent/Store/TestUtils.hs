@@ -34,9 +34,11 @@ generateEvents =
                EventData guid (EventType "foo") (toJSON payload) (toJSON ())
      V.forM (V.fromList [0..999]) $ \(_ :: Int) -> entry <$> UUID.nextRandom
 
+type TestSubscriber = (TVar [RecordedEvent], Async ())
+
 makeEventSubscriber ::
   EventStoreSubscriber IO es
-  => es -> StreamId -> IO (TVar [RecordedEvent], Async ())
+  => es -> StreamId -> IO TestSubscriber
 makeEventSubscriber store stream =
   do outVar <- newTVarIO []
      poller <-
@@ -50,7 +52,26 @@ makeEventSubscriber store stream =
                      Just v ->
                        do liftIO $ atomically $ modifyTVar' outVar (v :)
                           consumer
-          runConduit $ subscribeTo store (SubscriptionConfig SspBeginning stream) .| consumer
+          runConduit $ subscribeTo store (SStream $ StreamSubscription SspBeginning stream) .| consumer
+     pure (outVar, poller)
+
+makeGlobalSubscriber ::
+  EventStoreSubscriber IO es
+  => es -> IO TestSubscriber
+makeGlobalSubscriber store =
+  do outVar <- newTVarIO []
+     poller <-
+       async $
+       do let consumer =
+                do val <- await
+                   case val of
+                     Nothing ->
+                       do liftIO $ putStrLn "Consumer was terminated"
+                          pure ()
+                     Just v ->
+                       do liftIO $ atomically $ modifyTVar' outVar (v :)
+                          consumer
+          runConduit $ subscribeTo store (SGlobal $ GlobalSubscription SspBeginning) .| consumer
      pure (outVar, poller)
 
 checkAllEventsArrived :: (TVar [RecordedEvent], Async a) -> IO (V.Vector UUID)
@@ -72,6 +93,8 @@ streamingSpecHelper =
      it "with existing events works" interleavedStream
      it "with concurrent event writing works" concurrentStream
      it "multiple streams" multiStream
+     describe "global sub" $
+       do it "simple case works" simpleWriteGlobalStream
 
 
 simpleWriteSubStream ::
@@ -145,6 +168,19 @@ multiStream store =
        writeRes3 <- writeToStream store stream2 EvAny (V.drop 50 events2)
        shouldBeSuccess writeRes3
 
+       let writtenGuids = V.map ed_guid events
+       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult `shouldBe` writtenGuids
+
+simpleWriteGlobalStream ::
+    (EventStoreSubscriber IO es, EventStoreWriter IO es)
+    => es -> IO ()
+simpleWriteGlobalStream store =
+    do let stream = StreamId "text"
+       (outVar, poller) <- makeGlobalSubscriber store
+       events <- generateEvents
+       writeRes <- writeToStream store stream EvAny events
+       shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
        finalResult <- checkAllEventsArrived (outVar, poller)
        finalResult `shouldBe` writtenGuids

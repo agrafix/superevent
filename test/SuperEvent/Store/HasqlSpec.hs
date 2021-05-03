@@ -20,7 +20,6 @@ spec =
        it "should work for simple reads to two streams" simpleWriteRead2
        it "should work for simple stream reads" simpleWriteReadStream
        it "should work for simple global reads" simpleWriteReadGlobal
-       streamingSpecHelper
 
 simpleWriteRead ::
     (EventStoreReader IO es, EventStoreWriter IO es)

@@ -15,11 +15,9 @@ import SuperEvent.Store.Types
 
 import Control.Exception
 import Control.Monad.Trans
-import Data.Conduit
 import Data.Functor.Contravariant
 import Data.Maybe
 import Data.String.QQ
-import Data.Time.TimeSpan
 import Hasql.Statement
 import System.Environment
 import System.Random
@@ -349,37 +347,6 @@ dbReadGlobalPosition :: DbStore -> IO GlobalPosition
 dbReadGlobalPosition store =
   withPool (db_store store) $
   fromMaybe (GlobalPosition 0) <$> S.statement () qGlobalPosition
-
--- | Poor mans subscriber implementation as 'hasql' does not support
--- LISTEN/NOTIFY. Could replace with REDIS?
-dbSubscribeTo ::
-    DbStore
-    -> SubscriptionConfig
-    -> ConduitM () RecordedEvent IO ()
-dbSubscribeTo store config =
-    do startNumber <-
-           case startPosition of
-             SspBeginning -> pure firstEventNumber
-             SspFrom x -> pure x
-             SspCurrent -> liftIO (readStreamVersion store $ sc_stream config)
-       innerLoop startNumber
-    where
-      innerLoop !pos =
-          do batch <-
-                 liftIO $
-                 dbReadStreamEvents store streamId pos 1000 RdForward
-             if V.null batch
-                then do liftIO $ sleepTS (milliseconds 500)
-                        innerLoop pos
-                else do V.mapM_ yield batch
-                        let lastEl = V.last batch
-                        innerLoop (nextEventNumber (re_number lastEl))
-
-      streamId = sc_stream config
-      startPosition = sc_startPosition config
-
-instance EventStoreSubscriber IO DbStore where
-    subscribeTo = dbSubscribeTo
 
 schemaV1 :: BS.ByteString
 schemaV1 = [s|

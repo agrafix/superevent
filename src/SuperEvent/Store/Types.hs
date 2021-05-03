@@ -94,17 +94,26 @@ class EventStoreReader m es | es -> m where
     readGlobalPosition :: es -> m GlobalPosition
     readAllEvents :: es -> GlobalPosition -> Int -> ReadDirection -> m (Vector RecordedEvent)
 
-data SubscriptionStartPosition
+data SubscriptionStartPosition t
     = SspBeginning
-    | SspFrom EventNumber
+    | SspFrom t
     | SspCurrent
     deriving (Show, Eq)
 
-data SubscriptionConfig
-    = SubscriptionConfig
-    { sc_startPosition :: SubscriptionStartPosition
-    , sc_stream :: StreamId
+data StreamSubscription
+    = StreamSubscription
+    { ss_startPosition :: SubscriptionStartPosition EventNumber
+    , ss_stream :: StreamId
     } deriving (Show, Eq)
 
+data GlobalSubscription
+    = GlobalSubscription
+    { gs_startPosition :: SubscriptionStartPosition GlobalPosition
+    } deriving (Show, Eq)
+
+data Subscription
+  = SStream StreamSubscription
+  | SGlobal GlobalSubscription
+
 class EventStoreSubscriber m es | es -> m where
-    subscribeTo :: es -> SubscriptionConfig -> ConduitM () RecordedEvent m ()
+    subscribeTo :: es -> Subscription -> ConduitM () RecordedEvent m ()
