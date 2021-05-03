@@ -99,7 +99,7 @@ simpleWriteReadGlobal store =
        shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
            readHelper pos lim =
-               V.map (re_guid . snd) <$> readAllEvents store pos lim RdForward
+               V.map re_guid <$> readAllEvents store pos lim RdForward
        evts <- readHelper (GlobalPosition 0) 10
        evts `shouldBe` V.take 10 writtenGuids
 

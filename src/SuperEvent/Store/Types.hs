@@ -66,6 +66,7 @@ data RecordedEvent
     = RecordedEvent
     { re_stream :: StreamId
     , re_guid :: UUID
+    , re_globalPosition :: GlobalPosition
     , re_number :: EventNumber
     , re_type :: EventType
     , re_data :: Value
@@ -89,9 +90,9 @@ class EventStoreReader m es | es -> m where
     readStreamEvents ::
         es -> StreamId -> EventNumber -> Int -> ReadDirection
         -> m (Vector RecordedEvent)
-    readAllEvents ::
-        es -> GlobalPosition -> Int -> ReadDirection
-        -> m (Vector (GlobalPosition, RecordedEvent))
+
+    readGlobalPosition :: es -> m GlobalPosition
+    readAllEvents :: es -> GlobalPosition -> Int -> ReadDirection -> m (Vector RecordedEvent)
 
 data SubscriptionStartPosition
     = SspBeginning

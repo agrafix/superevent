@@ -120,11 +120,15 @@ encGlobalPosition = contramap unGlobalPosition (E.param (E.nonNullable E.int8))
 decEventNumber :: D.Row EventNumber
 decEventNumber = EventNumber <$> D.column (D.nonNullable D.int8)
 
+decGlobalPosition :: D.Row GlobalPosition
+decGlobalPosition = GlobalPosition <$> D.column (D.nonNullable D.int8)
+
 decRecordedEvent :: D.Row RecordedEvent
 decRecordedEvent =
     RecordedEvent
     <$> (StreamId <$> D.column (D.nonNullable D.text))
     <*> D.column (D.nonNullable D.uuid)
+    <*> decGlobalPosition
     <*> decEventNumber
     <*> (EventType <$> D.column (D.nonNullable D.text))
     <*> D.column (D.nonNullable D.jsonb)
@@ -142,6 +146,17 @@ qStreamVersion =
       decoder =
           fmap EventNumber <$> D.singleRow (D.column (D.nullable D.int8))
 
+qGlobalPosition :: Statement () (Maybe GlobalPosition)
+qGlobalPosition =
+    Statement sql encoder decoder True
+    where
+      sql =
+          "SELECT MAX(position) FROM events"
+      encoder =
+          mempty
+      decoder =
+          fmap GlobalPosition <$> D.singleRow (D.column (D.nullable D.int8))
+
 data WriteEvent
     = WriteEvent
     { we_stream :: StreamId
@@ -158,7 +173,7 @@ qWriteEvent =
           <> "(id, stream, version, type, data, meta_data)"
           <> " VALUES "
           <> "($1, $2, $3, $4, $5, $6)"
-          <> " RETURNING stream, id, version, type, data, meta_data, created"
+          <> " RETURNING stream, id, position, version, type, data, meta_data, created"
       encoder =
           contramap (ed_guid . we_data) (E.param (E.nonNullable E.uuid))
           <> contramap we_stream encStreamId
@@ -181,7 +196,7 @@ qSingleEvent =
     where
       sql =
           "SELECT "
-          <> "stream, id, version, type, data, meta_data, created "
+          <> "stream, id, position, version, type, data, meta_data, created "
           <> "FROM "
           <> "events "
           <> "WHERE stream = $1 AND version = $2 LIMIT 1"
@@ -201,7 +216,7 @@ data EventStreamQuery
 sqlEventStream :: ReadDirection -> BS.ByteString
 sqlEventStream readDir =
     "SELECT "
-    <> "stream, id, version, type, data, meta_data, created "
+    <> "stream, id, position, version, type, data, meta_data, created "
     <> "FROM "
     <> "events "
     <> "WHERE stream = $1 AND version "
@@ -232,13 +247,13 @@ data GlobalEventQuery
 
 qGlobalEvent ::
     ReadDirection
-    -> Statement GlobalEventQuery (V.Vector (GlobalPosition, RecordedEvent))
+    -> Statement GlobalEventQuery (V.Vector RecordedEvent)
 qGlobalEvent readDir =
     Statement sql encoder decoder True
     where
       sql =
           "SELECT "
-          <> "position, stream, id, version, type, data, meta_data, created "
+          <> "stream, id, position, version, type, data, meta_data, created "
           <> "FROM "
           <> "events "
           <> "WHERE position "
@@ -251,10 +266,7 @@ qGlobalEvent readDir =
           contramap geq_position encGlobalPosition
           <> contramap (fromIntegral . geq_limit) (E.param (E.nonNullable E.int8))
       decoder =
-          D.rowVector $
-          (,)
-          <$> (GlobalPosition <$> D.column (D.nonNullable D.int8))
-          <*> decRecordedEvent
+          D.rowVector decRecordedEvent
 
 dbWriteToStream ::
     DbStore
@@ -314,21 +326,29 @@ dbReadStreamEvents store streamId eventNumber size readDir =
 dbReadAllEvents ::
     DbStore
     -> GlobalPosition -> Int -> ReadDirection
-    -> IO (V.Vector (GlobalPosition, RecordedEvent))
+    -> IO (V.Vector RecordedEvent)
 dbReadAllEvents store eventNumber size readDir =
     withPool (db_store store) $
     S.statement (GlobalEventQuery eventNumber size) (qGlobalEvent readDir)
 
 instance EventStoreReader IO DbStore where
     readEvent = dbReadEvent
+
     readStreamEvents = dbReadStreamEvents
-    readAllEvents = dbReadAllEvents
     readStreamVersion = dbReadStreamVersion
+
+    readAllEvents = dbReadAllEvents
+    readGlobalPosition = dbReadGlobalPosition
 
 dbReadStreamVersion :: DbStore -> StreamId -> IO EventNumber
 dbReadStreamVersion store streamId =
   withPool (db_store store) $
   fromMaybe firstEventNumber <$> S.statement streamId qStreamVersion
+
+dbReadGlobalPosition :: DbStore -> IO GlobalPosition
+dbReadGlobalPosition store =
+  withPool (db_store store) $
+  fromMaybe (GlobalPosition 0) <$> S.statement () qGlobalPosition
 
 -- | Poor mans subscriber implementation as 'hasql' does not support
 -- LISTEN/NOTIFY. Could replace with REDIS?
