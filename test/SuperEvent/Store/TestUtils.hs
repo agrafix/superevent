@@ -38,8 +38,8 @@ type TestSubscriber = (TVar [RecordedEvent], Async ())
 
 makeEventSubscriber ::
   EventStoreSubscriber IO es
-  => es -> StreamId -> IO TestSubscriber
-makeEventSubscriber store stream =
+  => es -> StreamId -> SubscriptionStartPosition EventNumber -> IO TestSubscriber
+makeEventSubscriber store stream startPos =
   do outVar <- newTVarIO []
      poller <-
        async $
@@ -52,13 +52,13 @@ makeEventSubscriber store stream =
                      Just v ->
                        do liftIO $ atomically $ modifyTVar' outVar (v :)
                           consumer
-          runConduit $ subscribeTo store (SStream $ StreamSubscription SspBeginning stream) .| consumer
+          runConduit $ subscribeTo store (SStream $ StreamSubscription startPos stream) .| consumer
      pure (outVar, poller)
 
 makeGlobalSubscriber ::
   EventStoreSubscriber IO es
-  => es -> IO TestSubscriber
-makeGlobalSubscriber store =
+  => es -> SubscriptionStartPosition GlobalPosition  -> IO TestSubscriber
+makeGlobalSubscriber store startPos =
   do outVar <- newTVarIO []
      poller <-
        async $
@@ -71,15 +71,15 @@ makeGlobalSubscriber store =
                      Just v ->
                        do liftIO $ atomically $ modifyTVar' outVar (v :)
                           consumer
-          runConduit $ subscribeTo store (SGlobal $ GlobalSubscription SspBeginning) .| consumer
+          runConduit $ subscribeTo store (SGlobal $ GlobalSubscription startPos) .| consumer
      pure (outVar, poller)
 
-checkAllEventsArrived :: (TVar [RecordedEvent], Async a) -> IO (V.Vector UUID)
-checkAllEventsArrived (outVar, poller) =
+checkAllEventsArrived :: Int -> (TVar [RecordedEvent], Async a) -> IO (V.Vector UUID)
+checkAllEventsArrived expectedEvents (outVar, poller) =
   do finalResult <-
            atomically $
            do vals <- readTVar outVar
-              when (length vals <= 999) retry
+              when (length vals < expectedEvents) retry
               pure (V.map re_guid $ V.reverse $ V.fromList vals)
      uninterruptibleCancel poller
      pure finalResult
@@ -93,8 +93,10 @@ streamingSpecHelper =
      it "with existing events works" interleavedStream
      it "with concurrent event writing works" concurrentStream
      it "multiple streams" multiStream
+     it "late start" lateStartStream
      describe "global sub" $
        do it "simple case works" simpleWriteGlobalStream
+          it "late start" lateStartGlobalStream
 
 
 simpleWriteSubStream ::
@@ -102,13 +104,30 @@ simpleWriteSubStream ::
     => es -> IO ()
 simpleWriteSubStream store =
     do let stream = StreamId "text"
-       (outVar, poller) <- makeEventSubscriber store stream
+       (outVar, poller) <- makeEventSubscriber store stream SspBeginning
        events <- generateEvents
        writeRes <- writeToStream store stream EvAny events
        shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
-       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult <- checkAllEventsArrived 1000 (outVar, poller)
        finalResult `shouldBe` writtenGuids
+
+lateStartStream ::
+    (EventStoreSubscriber IO es, EventStoreWriter IO es)
+    => es -> IO ()
+lateStartStream store =
+    do let stream = StreamId "text"
+       events <- generateEvents
+       writeRes <- writeToStream store stream EvAny (V.take 50 events)
+       shouldBeSuccess writeRes
+
+       (outVar, poller) <- makeEventSubscriber store stream (SspFrom (EventNumber 20))
+       writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
+       shouldBeSuccess writeRes2
+
+       let expectedGuids = V.map ed_guid $ V.drop 19 events
+       finalResult <- checkAllEventsArrived (V.length expectedGuids) (outVar, poller)
+       finalResult `shouldBe` expectedGuids
 
 interleavedStream ::
     (EventStoreSubscriber IO es, EventStoreWriter IO es)
@@ -116,15 +135,16 @@ interleavedStream ::
 interleavedStream store =
     do let stream = StreamId "text"
        events <- generateEvents
+
        writeRes <- writeToStream store stream EvAny (V.take 50 events)
        shouldBeSuccess writeRes
 
-       (outVar, poller) <- makeEventSubscriber store stream
+       (outVar, poller) <- makeEventSubscriber store stream SspBeginning
        writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
        shouldBeSuccess writeRes2
 
        let writtenGuids = V.map ed_guid events
-       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult <- checkAllEventsArrived 1000 (outVar, poller)
        finalResult `shouldBe` writtenGuids
 
 concurrentStream ::
@@ -139,10 +159,10 @@ concurrentStream store =
        _ <- async $
          do writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
             shouldBeSuccess writeRes2
-       (outVar, poller) <- makeEventSubscriber store stream
+       (outVar, poller) <- makeEventSubscriber store stream SspBeginning
 
        let writtenGuids = V.map ed_guid events
-       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult <- checkAllEventsArrived 1000 (outVar, poller)
        finalResult `shouldBe` writtenGuids
 
 multiStream ::
@@ -160,7 +180,7 @@ multiStream store =
        writeRes1 <- writeToStream store stream2 EvAny (V.take 50 events2)
        shouldBeSuccess writeRes1
 
-       (outVar, poller) <- makeEventSubscriber store stream
+       (outVar, poller) <- makeEventSubscriber store stream SspBeginning
 
        writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
        shouldBeSuccess writeRes2
@@ -169,7 +189,7 @@ multiStream store =
        shouldBeSuccess writeRes3
 
        let writtenGuids = V.map ed_guid events
-       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult <- checkAllEventsArrived 1000 (outVar, poller)
        finalResult `shouldBe` writtenGuids
 
 simpleWriteGlobalStream ::
@@ -177,10 +197,27 @@ simpleWriteGlobalStream ::
     => es -> IO ()
 simpleWriteGlobalStream store =
     do let stream = StreamId "text"
-       (outVar, poller) <- makeGlobalSubscriber store
+       (outVar, poller) <- makeGlobalSubscriber store SspBeginning
        events <- generateEvents
        writeRes <- writeToStream store stream EvAny events
        shouldBeSuccess writeRes
        let writtenGuids = V.map ed_guid events
-       finalResult <- checkAllEventsArrived (outVar, poller)
+       finalResult <- checkAllEventsArrived 1000 (outVar, poller)
        finalResult `shouldBe` writtenGuids
+
+lateStartGlobalStream ::
+    (EventStoreSubscriber IO es, EventStoreWriter IO es)
+    => es -> IO ()
+lateStartGlobalStream store =
+    do let stream = StreamId "text"
+       events <- generateEvents
+       writeRes <- writeToStream store stream EvAny (V.take 50 events)
+       shouldBeSuccess writeRes
+
+       (outVar, poller) <- makeGlobalSubscriber store (SspFrom (GlobalPosition 20))
+       writeRes2 <- writeToStream store stream EvAny (V.drop 50 events)
+       shouldBeSuccess writeRes2
+
+       let expectedGuids = V.map ed_guid $ V.drop 19 events
+       finalResult <- checkAllEventsArrived (V.length expectedGuids) (outVar, poller)
+       finalResult `shouldBe` expectedGuids
